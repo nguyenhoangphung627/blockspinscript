@@ -1,0 +1,446 @@
+--================================================
+-- LOAD UI (X2ZU)
+--================================================
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/x2zu/OPEN-SOURCE-UI-ROBLOX/refs/heads/main/X2ZU%20UI%20ROBLOX%20OPEN%20SOURCE/DummyUi-leak-by-x2zu/fetching-main/Tools/Framework.luau"))()
+
+--=================== SERVICES ===================
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+
+local Window = Library:Window({
+    Title = "HWG Hub",
+    Desc = "Tiktok:hngphggzz Fl My Account",
+    Icon = 105059922903197,
+    Theme = "Dark",
+    Config = {
+        Keybind = Enum.KeyCode.LeftControl,
+        Size = UDim2.new(0, 400, 0, 320)
+    },
+    CloseUIButton = {
+        Enabled = true,
+        Text = "UI"
+    }
+})
+
+--================================================
+-- TABS
+--================================================
+local Main = Window:Tab({Title = "Main", Icon = "⚔️"})
+local ESPTab = Window:Tab({Title = "ESP", Icon = "👁️"})
+
+--================================================
+-- GLOBAL VARIABLES
+--================================================
+local AimEnabled = false
+local FOVVisible = false
+local AimConnection = nil
+local FOVCircle = nil
+local currentTarget = nil
+
+local Settings = {
+    MaxDistance = 300,
+    FOV = 120,
+    AimSmoothness = 0.2
+}
+
+--================================================
+-- ESP VARIABLES
+--================================================
+local ESPEnabled = false
+local ESPHealth = true
+local ESPDistance = true
+local ESPName = true
+local ESPTargetHighlight = true
+
+local ESPobjects = {}
+local ESPLabels = {}
+
+--================================================
+-- BASIC FUNCTIONS
+--================================================
+
+-- GET AIM POSITION
+local function getAimPosition(plr)
+    if not plr or not plr.Character then return nil end
+    local head = plr.Character:FindFirstChild("Head")
+    if head then return head.Position end
+    local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+    if hrp then return hrp.Position end
+    return nil
+end
+
+-- GET HUMANOID
+local function getHumanoid(plr)
+    if not plr or not plr.Character then return nil end
+    return plr.Character:FindFirstChildOfClass("Humanoid")
+end
+
+-- CHECK IF ALIVE
+local function isAlive(plr)
+    local hum = getHumanoid(plr)
+    return hum and hum.Health > 0
+end
+
+-- GET HEALTH PERCENTAGE
+local function getHealthPercent(plr)
+    local hum = getHumanoid(plr)
+    if not hum then return 0 end
+    return (hum.Health / hum.MaxHealth) * 100
+end
+
+-- GET DISTANCE
+local function getDistance(plr)
+    if not plr or not plr.Character then return math.huge end
+    if not LocalPlayer.Character then return math.huge end
+    
+    local myPos = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not myPos then return math.huge end
+    
+    local targetPos = getAimPosition(plr)
+    if not targetPos then return math.huge end
+    
+    return (myPos.Position - targetPos).Magnitude
+end
+
+-- CHECK FOV
+local function inFOV(plr)
+    if not plr or not plr.Character then return false end
+    local pos = getAimPosition(plr)
+    if not pos then return false end
+    
+    local cameraDir = Camera.CFrame.LookVector
+    local toTarget = (pos - Camera.CFrame.Position).Unit
+    local dot = math.clamp(cameraDir:Dot(toTarget), -1, 1)
+    local angle = math.deg(math.acos(dot))
+    return angle <= Settings.FOV
+end
+
+-- FIND BEST TARGET
+local function findBestTarget()
+    local bestTarget = nil
+    local bestDist = math.huge
+    
+    if not LocalPlayer.Character then return nil end
+    
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr == LocalPlayer then continue end
+        if not plr.Character then continue end
+        if not isAlive(plr) then continue end
+        
+        local dist = getDistance(plr)
+        if dist > Settings.MaxDistance then continue end
+        if not inFOV(plr) then continue end
+        
+        if dist < bestDist then
+            bestDist = dist
+            bestTarget = plr
+        end
+    end
+    
+    return bestTarget
+end
+
+--================================================
+-- MAIN TAB - AIMBOT
+--================================================
+Main:Section({Title = "Aimbot"})
+
+Main:Toggle({
+    Title = "Enable Aim",
+    Desc = "Aim at all players",
+    Value = false,
+    Callback = function(v)
+        AimEnabled = v
+        if v then
+            AimConnection = RunService.RenderStepped:Connect(function()
+                if not AimEnabled then return end
+                
+                local target = findBestTarget()
+                currentTarget = target
+                
+                if target and target.Character then
+                    local targetPos = getAimPosition(target)
+                    if targetPos then
+                        Camera.CFrame = Camera.CFrame:Lerp(
+                            CFrame.new(Camera.CFrame.Position, targetPos),
+                            Settings.AimSmoothness
+                        )
+                    end
+                end
+            end)
+        else
+            if AimConnection then
+                AimConnection:Disconnect()
+                AimConnection = nil
+            end
+            currentTarget = nil
+        end
+    end
+})
+
+Main:Slider({
+    Title = "Max Distance",
+    Min = 50,
+    Max = 500,
+    Default = Settings.MaxDistance,
+    Callback = function(v)
+        Settings.MaxDistance = v
+    end
+})
+
+Main:Slider({
+    Title = "FOV",
+    Min = 30,
+    Max = 180,
+    Default = Settings.FOV,
+    Callback = function(v)
+        Settings.FOV = v
+    end
+})
+
+Main:Slider({
+    Title = "Aim Smoothness",
+    Min = 0.1,
+    Max = 0.5,
+    Default = Settings.AimSmoothness,
+    Precision = 2,
+    Callback = function(v)
+        Settings.AimSmoothness = v
+    end
+})
+
+Main:Section({Title = "FOV"})
+
+Main:Toggle({
+    Title = "Show FOV Circle",
+    Value = false,
+    Callback = function(v)
+        FOVVisible = v
+        if v then
+            if not FOVCircle then
+                FOVCircle = Drawing.new("Circle")
+                FOVCircle.Transparency = 0.6
+                FOVCircle.Thickness = 2
+                FOVCircle.Color = Color3.fromRGB(255, 255, 255)
+                FOVCircle.NumSides = 64
+                FOVCircle.Filled = false
+                
+                RunService.RenderStepped:Connect(function()
+                    if FOVCircle and FOVVisible then
+                        local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+                        local radius = math.tan(math.rad(Settings.FOV) / 2) * Camera.ViewportSize.Y
+                        FOVCircle.Position = center
+                        FOVCircle.Radius = radius
+                        FOVCircle.Visible = true
+                    elseif FOVCircle then
+                        FOVCircle.Visible = false
+                    end
+                end)
+            end
+            FOVCircle.Visible = true
+        elseif FOVCircle then
+            FOVCircle.Visible = false
+        end
+    end
+})
+
+--================================================
+-- ESP TAB
+--================================================
+ESPTab:Section({Title = "ESP Controls"})
+
+ESPTab:Toggle({
+    Title = "Enable ESP",
+    Value = false,
+    Callback = function(v)
+        ESPEnabled = v
+        if not v then
+            -- Delete all ESP
+            for _, obj in pairs(ESPobjects) do pcall(function() obj:Destroy() end) end
+            for _, lbl in pairs(ESPLabels) do pcall(function() lbl:Destroy() end) end
+            ESPobjects = {}
+            ESPLabels = {}
+        end
+    end
+})
+
+ESPTab:Section({Title = "ESP Display"})
+
+ESPTab:Toggle({
+    Title = "Show Health",
+    Value = true,
+    Callback = function(v) ESPHealth = v end
+})
+
+ESPTab:Toggle({
+    Title = "Show Distance",
+    Value = true,
+    Callback = function(v) ESPDistance = v end
+})
+
+ESPTab:Toggle({
+    Title = "Show Name",
+    Value = true,
+    Callback = function(v) ESPName = v end
+})
+
+ESPTab:Toggle({
+    Title = "Highlight Target Red",
+    Value = true,
+    Callback = function(v) ESPTargetHighlight = v end
+})
+
+--================================================
+-- ESP UPDATE LOOP
+--================================================
+
+local function updateESP()
+    while ESPEnabled do
+        for _, plr in pairs(Players:GetPlayers()) do
+            if plr == LocalPlayer then continue end
+            
+            if plr.Character then
+                local alive = isAlive(plr)
+                local health = getHealthPercent(plr)
+                local dist = getDistance(plr)
+                
+                -- Determine color
+                local color
+                if not alive then
+                    color = Color3.fromRGB(80, 80, 80) -- Gray (dead)
+                elseif plr == currentTarget and ESPTargetHighlight then
+                    color = Color3.fromRGB(255, 0, 0) -- Red (target)
+                else
+                    -- Random color based on name
+                    local hue = (plr.Name:byte(1) % 10) / 10
+                    color = Color3.fromHSV(hue, 1, 1)
+                end
+                
+                -- Create Highlight
+                if not ESPobjects[plr] then
+                    local highlight = Instance.new("Highlight")
+                    highlight.FillColor = color
+                    highlight.OutlineColor = color
+                    highlight.FillTransparency = 0.6
+                    highlight.DepthMode = Enum.HighlightDepthMode.Occluded
+                    highlight.Parent = plr.Character
+                    ESPobjects[plr] = highlight
+                else
+                    ESPobjects[plr].FillColor = color
+                    ESPobjects[plr].OutlineColor = color
+                end
+                
+                -- Create Billboard (name, health, distance)
+                if ESPName or ESPHealth or ESPDistance then
+                    local head = plr.Character:FindFirstChild("Head")
+                    if head then
+                        if not ESPLabels[plr] then
+                            local billboard = Instance.new("BillboardGui")
+                            billboard.Adornee = head
+                            billboard.Size = UDim2.new(0, 150, 0, 50)
+                            billboard.StudsOffset = Vector3.new(0, 3, 0)
+                            billboard.AlwaysOnTop = true
+                            
+                            local text = Instance.new("TextLabel")
+                            text.Size = UDim2.new(1, 0, 1, 0)
+                            text.BackgroundTransparency = 1
+                            text.TextColor3 = Color3.fromRGB(255, 255, 255)
+                            text.TextStrokeTransparency = 0
+                            text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+                            text.Font = Enum.Font.GothamBold
+                            text.TextSize = 14
+                            text.Parent = billboard
+                            
+                            billboard.Parent = plr.Character
+                            ESPLabels[plr] = billboard
+                        end
+                        
+                        if ESPLabels[plr] and ESPLabels[plr].Parent then
+                            local text = ESPLabels[plr]:FindFirstChildOfClass("TextLabel")
+                            if text then
+                                local lines = {}
+                                if ESPName then table.insert(lines, plr.Name) end
+                                if ESPHealth then table.insert(lines, string.format("❤️ %.0f", health)) end
+                                if ESPDistance then table.insert(lines, string.format("📏 %.0f", dist)) end
+                                text.Text = table.concat(lines, "\n")
+                            end
+                        end
+                    end
+                elseif ESPLabels[plr] then
+                    ESPLabels[plr]:Destroy()
+                    ESPLabels[plr] = nil
+                end
+                
+            else
+                -- Remove ESP if no character
+                if ESPobjects[plr] then
+                    ESPobjects[plr]:Destroy()
+                    ESPobjects[plr] = nil
+                end
+                if ESPLabels[plr] then
+                    ESPLabels[plr]:Destroy()
+                    ESPLabels[plr] = nil
+                end
+            end
+        end
+        
+        task.wait(0.1)
+    end
+end
+
+-- Start ESP loop
+task.spawn(function()
+    while true do
+        if ESPEnabled then
+            updateESP()
+        end
+        task.wait(0.1)
+    end
+end)
+
+-- Handle character events
+local function setupCharacterEvents(plr)
+    if plr == LocalPlayer then return end
+    plr.CharacterRemoving:Connect(function()
+        if ESPobjects[plr] then
+            ESPobjects[plr]:Destroy()
+            ESPobjects[plr] = nil
+        end
+        if ESPLabels[plr] then
+            ESPLabels[plr]:Destroy()
+            ESPLabels[plr] = nil
+        end
+    end)
+end
+
+for _, plr in pairs(Players:GetPlayers()) do
+    if plr ~= LocalPlayer then setupCharacterEvents(plr) end
+end
+
+Players.PlayerAdded:Connect(function(plr)
+    if plr ~= LocalPlayer then setupCharacterEvents(plr) end
+end)
+
+--================================================
+-- READY
+--================================================
+Window:Notify({
+    Title = "HWG Hub",
+    Desc = "Tiktok:hngphggzz Fl My Account",
+    Time = 3
+})
+
+print([[
+╔══════════════════════════════════════════════════════════╗
+║  HWG HUB                                                  ║
+║  • 2 Tabs: Main | ESP                                   ║
+║  • Aimbot với FOV, khoảng cách, độ mượt                 ║
+║  • ESP với tên, máu, khoảng cách, màu sắc               ║
+║  • Tiktok: hngphggzz Fl My Account                      ║
+║                                                          ║
+║  Press LeftControl để mở UI                             ║
+╚══════════════════════════════════════════════════════════╝
+]])
